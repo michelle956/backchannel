@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backchannel — Braintrust</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0d; --surface: #161616; --border: #262626; --border-hover: #404040;
+    --text: #f0ede8; --text-muted: #5a5a5a; --text-dim: #888;
+    --accent: #e8d5a3; --accent-dim: rgba(232,213,163,0.08); --accent-border: rgba(232,213,163,0.2);
+    --green: #a8d5b5; --green-dim: rgba(168,213,181,0.08);
+    --red: #d5a8a8; --radius: 8px;
+    --mono: 'DM Mono', monospace; --sans: 'DM Sans', sans-serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; font-size: 14px; }
+
+  header { border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: rgba(13,13,13,0.97); backdrop-filter: blur(8px); z-index: 100; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 13px; color: var(--text-muted); }
+  .logo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 2.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .logo strong { color: var(--text); font-weight: 500; }
+  .header-right { display: flex; gap: 8px; }
+
+  .tabs { display: flex; padding: 20px 32px 0; border-bottom: 1px solid var(--border); gap: 2px; }
+  .tab { padding: 8px 18px; font-size: 13px; font-weight: 500; color: var(--text-muted); background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; transition: all 0.15s; font-family: var(--sans); }
+  .tab:hover { color: var(--text-dim); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  main { padding: 28px 32px; max-width: 860px; margin: 0 auto; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .search-wrap { position: relative; margin-bottom: 12px; }
+  .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 18px; pointer-events: none; }
+  .search-input { width: 100%; padding: 13px 16px 13px 46px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--sans); font-size: 15px; outline: none; transition: border-color 0.15s; }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text-muted); }
+
+  .filters { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; align-items: center; }
+  .filter-chip { display: flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 5px 14px; }
+  .filter-chip label { font-family: var(--mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap; }
+  .filter-chip input[type="number"] { width: 58px; background: transparent; border: none; outline: none; color: var(--text); font-size: 12px; font-family: var(--mono); padding: 0; }
+  .filter-sep { color: var(--text-muted); font-size: 11px; }
+  .filter-opt { font-style: italic; opacity: 0.5; }
+
+  .db-meta { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-bottom: 20px; }
+
+  .empty { text-align: center; padding: 64px 20px; color: var(--text-muted); }
+  .empty-icon { font-size: 30px; opacity: 0.25; margin-bottom: 14px; }
+  .empty p { font-size: 14px; }
+  .empty .hint { font-size: 12px; margin-top: 6px; opacity: 0.6; }
+
+  .result-meta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+  .result-label { font-family: var(--mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .result-count { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; overflow: hidden; transition: border-color 0.15s; }
+  .card:hover { border-color: var(--border-hover); }
+  .card-header { display: flex; align-items: center; gap: 13px; padding: 13px 18px; }
+  .avatar { width: 33px; height: 33px; border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent-border); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; color: var(--accent); flex-shrink: 0; font-weight: 500; }
+  .person-info { flex: 1; min-width: 0; }
+  .person-name { font-weight: 600; font-size: 14px; color: var(--text); }
+  .person-sub { font-size: 11px; color: var(--text-muted); font-family: var(--mono); margin-top: 2px; display: flex; gap: 10px; }
+  .person-loc-badge { color: var(--text-dim); }
+  .card-actions { display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s; }
+  .card:hover .card-actions { opacity: 1; }
+
+  .stints { border-top: 1px solid var(--border); }
+  .stint { display: grid; grid-template-columns: 1fr 120px; gap: 10px; align-items: center; padding: 9px 18px; border-bottom: 1px solid var(--border); }
+  .stint:last-child { border-bottom: none; }
+  .stint.hit { background: var(--accent-dim); }
+  .stint-co { font-size: 13px; font-weight: 500; color: var(--text-dim); }
+  .stint.hit .stint-co { color: var(--accent); }
+  .stint-years { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  .stint.hit .stint-years { color: rgba(232,213,163,0.55); }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: #141414; border: 1px solid var(--border); border-radius: 10px; padding: 28px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-size: 15px; font-weight: 600; margin-bottom: 20px; color: var(--text); }
+
+  .form-section { font-family: var(--mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 14px; margin-top: 22px; }
+  .form-section:first-child { margin-top: 0; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
+  .fg { display: flex; flex-direction: column; gap: 5px; }
+  .fl { font-family: var(--mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  input[type="text"], input[type="number"], select { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--sans); font-size: 13px; padding: 8px 11px; outline: none; transition: border-color 0.15s; }
+  input:focus, select:focus { border-color: var(--border-hover); }
+  input::placeholder { color: var(--text-muted); }
+  select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23555' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; cursor: pointer; }
+
+  .stint-row-form { display: grid; grid-template-columns: 2fr 0.8fr 0.8fr; gap: 10px; margin-bottom: 10px; align-items: end; }
+  .stint-row-num { font-family: var(--mono); font-size: 10px; color: var(--text-muted); margin-bottom: 4px; }
+  .form-actions { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
+  .form-actions-right { margin-left: auto; }
+
+  .btn { padding: 8px 18px; border-radius: var(--radius); font-family: var(--sans); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #0d0d0d; }
+  .btn-primary:hover { background: #f0e0b0; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--border-hover); color: var(--text); }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
+  .btn-red { background: transparent; color: var(--red); border: 1px solid rgba(213,168,168,0.15); }
+  .btn-red:hover { background: rgba(213,168,168,0.07); }
+
+  .csv-spec { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+  .csv-spec pre { font-family: var(--mono); font-size: 11px; color: var(--text-dim); overflow-x: auto; margin-top: 8px; line-height: 2; white-space: pre; }
+
+  .upload-mode { display: flex; gap: 8px; margin-bottom: 16px; }
+  .mode-btn { flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text-muted); font-family: var(--sans); font-size: 13px; cursor: pointer; transition: all 0.15s; text-align: center; }
+  .mode-btn:hover { border-color: var(--border-hover); color: var(--text-dim); }
+  .mode-btn.active { border-color: var(--accent-border); background: var(--accent-dim); color: var(--accent); }
+  .mode-label { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .mode-desc { font-size: 11px; opacity: 0.7; font-family: var(--mono); }
+
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 44px; text-align: center; cursor: pointer; transition: all 0.15s; margin-bottom: 16px; }
+  .upload-zone:hover, .upload-zone.over { border-color: var(--accent); background: var(--accent-dim); }
+  .upload-zone input { display: none; }
+  .upload-icon { font-size: 26px; margin-bottom: 10px; opacity: 0.35; }
+  .upload-title { font-size: 14px; font-weight: 500; margin-bottom: 5px; }
+  .upload-sub { font-size: 12px; color: var(--text-muted); }
+  .upload-row { display: flex; align-items: center; gap: 12px; }
+  .upload-status { font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 11px 18px; border-radius: var(--radius); font-size: 13px; font-weight: 500; z-index: 999; opacity: 0; transform: translateY(6px); transition: all 0.2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.ok { background: var(--green-dim); border: 1px solid rgba(168,213,181,0.25); color: var(--green); }
+  .toast.err { background: rgba(213,168,168,0.07); border: 1px solid rgba(213,168,168,0.25); color: var(--red); }
+
+  .loading { text-align: center; padding: 40px; color: var(--text-muted); font-family: var(--mono); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    <strong>Backchannel</strong>&nbsp;/&nbsp;Braintrust Internal
+  </div>
+  <div class="header-right">
+    <button class="btn btn-ghost btn-sm" onclick="go('upload')">↑ Upload CSV</button>
+    <button class="btn btn-primary btn-sm" onclick="go('add')">+ Add Person</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" id="tab-search" onclick="go('search')">Search</button>
+  <button class="tab" id="tab-add" onclick="go('add')">Add Person</button>
+  <button class="tab" id="tab-upload" onclick="go('upload')">Upload CSV</button>
+</div>
+
+<main>
+
+  <!-- SEARCH -->
+  <div class="panel active" id="panel-search">
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input class="search-input" type="text" id="q" placeholder="Search by company — e.g. Datadog, Grafana, Snowflake…" oninput="search()">
+    </div>
+    <div class="filters">
+      <div class="filter-chip">
+        <label>Years <span class="filter-opt">optional</span></label>
+        <input type="number" id="yfrom" placeholder="2018" oninput="search()">
+        <span class="filter-sep">–</span>
+        <input type="number" id="yto" placeholder="2024" oninput="search()">
+      </div>
+    </div>
+    <div class="db-meta" id="dbmeta">Connecting…</div>
+    <div id="results">
+      <div class="empty">
+        <div class="empty-icon">◎</div>
+        <p>Search a company to see who can backchannel</p>
+        <p class="hint">Shows name, current location, Braintrust role, and years at that company</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD -->
+  <div class="panel" id="panel-add">
+    <div class="form-section">Person</div>
+    <div class="form-grid">
+      <div class="fg"><label class="fl">Full Name</label><input type="text" id="aname" placeholder="Phil Hetzel"></div>
+      <div class="fg"><label class="fl">Current Location</label>
+        <select id="aloc"><option value="">—</option><option>SF</option><option>NYC</option><option>LA</option><option>Seattle</option><option>Austin</option><option>Chicago</option><option>Boston</option><option>London</option><option>Remote</option><option>Other</option></select>
+      </div>
+      <div class="fg"><label class="fl">Braintrust Role</label><input type="text" id="arole" placeholder="VP Field Engineering"></div>
+    </div>
+    <div class="form-section">Previous Companies</div>
+    <div class="stint-row-num">Company 1</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="c1n" placeholder="Grafana Labs"></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="c1s" placeholder="2021"></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="c1e" placeholder="2024"></div>
+    </div>
+    <div class="stint-row-num">Company 2</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="c2n" placeholder="Datadog"></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="c2s" placeholder="2018"></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="c2e" placeholder="2021"></div>
+    </div>
+    <div class="stint-row-num">Company 3</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="c3n" placeholder="New Relic"></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="c3s" placeholder="2015"></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="c3e" placeholder="2018"></div>
+    </div>
+    <div class="stint-row-num">Company 4</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="c4n" placeholder=""></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="c4s" placeholder=""></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="c4e" placeholder=""></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="addBtn" onclick="addPerson()">Save Person</button>
+      <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+    </div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div class="panel" id="panel-upload">
+    <div class="csv-spec">
+      <div class="fl">Expected CSV format — 12 columns, one row per person</div>
+      <pre>Name, Current Location, Braintrust Role, Company 1, Start 1, End 1, Company 2, Start 2, End 2, Company 3, Start 3, End 3, Company 4, Start 4, End 4
+Phil Hetzel, SF, VP Field Engineering, Grafana Labs, 2021, 2024, Datadog, 2018, 2021, New Relic, 2015, 2018, Splunk, 2012, 2015
+Bryan Cox, SF, CRO, Grafana Labs, 2020, 2023, Splunk, 2017, 2020</pre>
+    </div>
+    <div class="upload-mode">
+      <div class="mode-btn active" id="mode-replace" onclick="setMode('replace')">
+        <div class="mode-label">Replace all</div>
+        <div class="mode-desc">Overwrites existing data</div>
+      </div>
+      <div class="mode-btn" id="mode-append" onclick="setMode('append')">
+        <div class="mode-label">Append</div>
+        <div class="mode-desc">Adds to existing data</div>
+      </div>
+    </div>
+    <div class="upload-zone" id="dropzone" onclick="document.getElementById('csvfile').click()">
+      <input type="file" id="csvfile" accept=".csv" onchange="handleCSV(event)">
+      <div class="upload-icon">⇪</div>
+      <div class="upload-title">Drop CSV here or click to upload</div>
+      <div class="upload-sub" id="upload-sub-text">Replaces all existing data</div>
+    </div>
+    <div class="upload-row">
+      <button class="btn btn-ghost btn-sm btn-red" onclick="clearAll()">Clear all data</button>
+      <span class="upload-status" id="upstatus"></span>
+    </div>
+  </div>
+
+</main>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-title">Edit Person</div>
+    <input type="hidden" id="editId">
+    <div class="form-section">Person</div>
+    <div class="form-grid">
+      <div class="fg"><label class="fl">Full Name</label><input type="text" id="ename"></div>
+      <div class="fg"><label class="fl">Current Location</label>
+        <select id="eloc"><option value="">—</option><option>SF</option><option>NYC</option><option>LA</option><option>Seattle</option><option>Austin</option><option>Chicago</option><option>Boston</option><option>London</option><option>Remote</option><option>Other</option></select>
+      </div>
+      <div class="fg"><label class="fl">Braintrust Role</label><input type="text" id="erole"></div>
+    </div>
+    <div class="form-section">Previous Companies</div>
+    <div class="stint-row-num">Company 1</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="ec1n"></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="ec1s"></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="ec1e"></div>
+    </div>
+    <div class="stint-row-num">Company 2</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="ec2n"></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="ec2s"></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="ec2e"></div>
+    </div>
+    <div class="stint-row-num">Company 3</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="ec3n"></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="ec3s"></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="ec3e"></div>
+    </div>
+    <div class="stint-row-num">Company 4</div>
+    <div class="stint-row-form">
+      <div class="fg"><label class="fl">Company</label><input type="text" id="ec4n"></div>
+      <div class="fg"><label class="fl">Start</label><input type="number" id="ec4s"></div>
+      <div class="fg"><label class="fl">End</label><input type="number" id="ec4e"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <div class="form-actions-right">
+        <button class="btn btn-red btn-sm" onclick="deleteFromModal()">Remove Person</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://ybpwbizlgtnsitlpksfk.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlicHdiaXpsZ3Ruc2l0bHBrc2ZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExMDE5NTIsImV4cCI6MjA4NjY3Nzk1Mn0.XgqYiRi_XtW8jutxe-IidYGHU39R3bCpKz-BrtyECjY';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let allPeople = [];
+let uploadMode = 'replace';
+
+async function init() {
+  const { data, error } = await sb.from('people').select('*');
+  if (error) { toast('Could not connect to database', 'err'); document.getElementById('dbmeta').textContent = 'Connection error'; return; }
+  allPeople = data || [];
+  updateMeta();
+}
+
+function updateMeta() {
+  const n = allPeople.length;
+  document.getElementById('dbmeta').textContent = n === 0
+    ? 'No people in database — add someone or upload a CSV'
+    : `${n} people in database`;
+}
+
+function initials(n) { return n.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2); }
+
+function stints(p) {
+  const s = [];
+  for (let i = 1; i <= 4; i++) if (p[`c${i}n`]) s.push({ co: p[`c${i}n`], s: p[`c${i}s`], e: p[`c${i}e`] });
+  return s;
+}
+
+function go(tab) {
+  ['search','add','upload'].forEach(t => {
+    document.getElementById(`panel-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+  });
+}
+
+function search() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const yf = parseInt(document.getElementById('yfrom').value) || null;
+  const yt = parseInt(document.getElementById('yto').value) || null;
+  const el = document.getElementById('results');
+
+  if (!q && !yf && !yt) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">◎</div><p>Search a company to see who can backchannel</p><p class="hint">Shows name, current location, Braintrust role, and years at that company</p></div>`;
+    return;
+  }
+
+  const matches = allPeople.reduce((acc, p) => {
+    const ss = stints(p);
+    const hits = ss.filter(s => {
+      if (q && !s.co.toLowerCase().includes(q)) return false;
+      const start = parseInt(s.s) || 0, end = parseInt(s.e) || 9999;
+      if (yf && yt && !(start <= yt && end >= yf)) return false;
+      if (yf && !yt && end < yf) return false;
+      if (!yf && yt && start > yt) return false;
+      return true;
+    });
+    if (hits.length) acc.push({ p, ss, hits });
+    return acc;
+  }, []);
+
+  if (!matches.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">◎</div><p>No matches found</p><p class="hint">Try a different company name or remove the year filter</p></div>`;
+    return;
+  }
+
+  const header = `<div class="result-meta"><span class="result-label">Results</span><span class="result-count">${matches.length} ${matches.length === 1 ? 'person' : 'people'}</span></div>`;
+
+  const cards = matches.map(({ p, ss, hits }) => {
+    const rows = ss.map(s => {
+      const isHit = hits.some(h => h.co === s.co && h.s === s.s);
+      const yr = (s.s || s.e) ? `${s.s || '?'} – ${s.e || 'present'}` : '—';
+      return `<div class="stint${isHit ? ' hit' : ''}"><span class="stint-co">${s.co}</span><span class="stint-years">${yr}</span></div>`;
+    }).join('');
+
+    const locBadge = p.loc ? `<span class="person-loc-badge">📍 ${p.loc}</span>` : '';
+    return `<div class="card">
+      <div class="card-header">
+        <div class="avatar">${initials(p.name)}</div>
+        <div class="person-info">
+          <div class="person-name">${p.name}</div>
+          <div class="person-sub">${p.role ? `<span>${p.role}</span>` : ''}${locBadge}</div>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openEdit('${p.id}')">Edit</button>
+          <button class="btn btn-red btn-sm" onclick="del('${p.id}')">Remove</button>
+        </div>
+      </div>
+      <div class="stints">${rows}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = header + cards;
+}
+
+async function addPerson() {
+  const name = document.getElementById('aname').value.trim();
+  const role = document.getElementById('arole').value.trim();
+  if (!name || !role) { toast('Name and role required', 'err'); return; }
+  const btn = document.getElementById('addBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const p = { id: Date.now().toString(), name, role, loc: document.getElementById('aloc').value };
+  for (let i = 1; i <= 4; i++) {
+    p[`c${i}n`] = document.getElementById(`c${i}n`).value.trim();
+    p[`c${i}s`] = document.getElementById(`c${i}s`).value;
+    p[`c${i}e`] = document.getElementById(`c${i}e`).value;
+  }
+  const { error } = await sb.from('people').insert([p]);
+  btn.disabled = false; btn.textContent = 'Save Person';
+  if (error) { toast('Error saving — ' + error.message, 'err'); return; }
+  allPeople.push(p);
+  updateMeta();
+  clearForm();
+  toast(`${name} saved`, 'ok');
+  go('search');
+}
+
+function clearForm() {
+  ['aname','arole','c1n','c1s','c1e','c2n','c2s','c2e','c3n','c3s','c3e','c4n','c4s','c4e'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('aloc').selectedIndex = 0;
+}
+
+async function del(id) {
+  const { error } = await sb.from('people').delete().eq('id', id);
+  if (error) { toast('Error removing', 'err'); return; }
+  allPeople = allPeople.filter(p => p.id !== id);
+  updateMeta();
+  search();
+  toast('Removed', 'ok');
+}
+
+function openEdit(id) {
+  const p = allPeople.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('editId').value = id;
+  document.getElementById('ename').value = p.name || '';
+  document.getElementById('erole').value = p.role || '';
+  document.getElementById('eloc').value = p.loc || '';
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById(`ec${i}n`).value = p[`c${i}n`] || '';
+    document.getElementById(`ec${i}s`).value = p[`c${i}s`] || '';
+    document.getElementById(`ec${i}e`).value = p[`c${i}e`] || '';
+  }
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('editModal').classList.remove('open'); }
+
+async function saveEdit() {
+  const id = document.getElementById('editId').value;
+  const name = document.getElementById('ename').value.trim();
+  const role = document.getElementById('erole').value.trim();
+  if (!name || !role) { toast('Name and role required', 'err'); return; }
+  const updates = { name, role, loc: document.getElementById('eloc').value };
+  for (let i = 1; i <= 4; i++) {
+    updates[`c${i}n`] = document.getElementById(`ec${i}n`).value.trim();
+    updates[`c${i}s`] = document.getElementById(`ec${i}s`).value;
+    updates[`c${i}e`] = document.getElementById(`ec${i}e`).value;
+  }
+  const { error } = await sb.from('people').update(updates).eq('id', id);
+  if (error) { toast('Error saving — ' + error.message, 'err'); return; }
+  const idx = allPeople.findIndex(p => p.id === id);
+  if (idx !== -1) allPeople[idx] = { ...allPeople[idx], ...updates };
+  closeModal();
+  search();
+  toast('Saved', 'ok');
+}
+
+async function deleteFromModal() {
+  const id = document.getElementById('editId').value;
+  if (!confirm('Remove this person?')) return;
+  const { error } = await sb.from('people').delete().eq('id', id);
+  if (error) { toast('Error removing', 'err'); return; }
+  allPeople = allPeople.filter(p => p.id !== id);
+  updateMeta();
+  closeModal();
+  search();
+  toast('Removed', 'ok');
+}
+
+document.getElementById('editModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+
+function setMode(m) {
+  uploadMode = m;
+  document.getElementById('mode-replace').classList.toggle('active', m === 'replace');
+  document.getElementById('mode-append').classList.toggle('active', m === 'append');
+  document.getElementById('upload-sub-text').textContent = m === 'replace' ? 'Replaces all existing data' : 'Adds to existing data — duplicates skipped';
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(cur.trim()); cur = ''; }
+    else { cur += ch; }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function parsePeople(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const people = [];
+  for (let i = 1; i < lines.length; i++) {
+    const c = parseCSVLine(lines[i]);
+    if (!c[0] || !c[2]) continue;
+    const p = { id: Date.now() + '_' + i, name: c[0], loc: c[1] || '', role: c[2] || '' };
+    [[3,4,5,1],[6,7,8,2],[9,10,11,3],[12,13,14,4]].forEach(([cn,cs,ce,idx]) => {
+      p[`c${idx}n`] = c[cn] || ''; p[`c${idx}s`] = c[cs] || ''; p[`c${idx}e`] = c[ce] || '';
+    });
+    people.push(p);
+  }
+  return people;
+}
+
+async function handleCSV(ev) {
+  const file = ev.target.files[0]; if (!file) return;
+  const statusEl = document.getElementById('upstatus');
+  statusEl.textContent = 'Uploading…';
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const incoming = parsePeople(e.target.result);
+    if (!incoming.length) { toast('CSV appears empty or malformed', 'err'); statusEl.textContent = ''; return; }
+
+    if (uploadMode === 'replace') {
+      const { error: delErr } = await sb.from('people').delete().neq('id', 'none');
+      if (delErr) { toast('Error clearing data', 'err'); statusEl.textContent = ''; return; }
+      const { error: insErr } = await sb.from('people').insert(incoming);
+      if (insErr) { toast('Error importing — ' + insErr.message, 'err'); statusEl.textContent = ''; return; }
+      allPeople = incoming;
+      toast(`${incoming.length} people imported`, 'ok');
+    } else {
+      const existingNames = new Set(allPeople.map(p => p.name.toLowerCase()));
+      const newOnly = incoming.filter(p => !existingNames.has(p.name.toLowerCase()));
+      if (newOnly.length) {
+        const { error } = await sb.from('people').insert(newOnly);
+        if (error) { toast('Error appending — ' + error.message, 'err'); statusEl.textContent = ''; return; }
+        allPeople = [...allPeople, ...newOnly];
+      }
+      const skipped = incoming.length - newOnly.length;
+      toast(`${newOnly.length} added${skipped ? `, ${skipped} skipped` : ''}`, 'ok');
+    }
+
+    updateMeta();
+    statusEl.textContent = `${allPeople.length} people in database`;
+    go('search');
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+}
+
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) handleCSV({ target: { files: [f] } }); });
+
+async function clearAll() {
+  if (!confirm('Clear all people from the database?')) return;
+  const { error } = await sb.from('people').delete().neq('id', 'none');
+  if (error) { toast('Error clearing', 'err'); return; }
+  allPeople = [];
+  updateMeta();
+  search();
+  toast('Cleared', 'ok');
+}
+
+function toast(msg, type = 'ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+init();
+</script>
+</body>
+</html>
