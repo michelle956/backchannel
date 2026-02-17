@@ -36,7 +36,7 @@
 
   .search-wrap { position: relative; margin-bottom: 12px; }
   .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 18px; pointer-events: none; }
-  .search-input { width: 100%; padding: 13px 16px; background: var(--surface); }
+  .search-input { width: 100%; padding: 13px 16px 13px 46px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--sans); font-size: 15px; outline: none; transition: border-color 0.15s; }
   .search-input:focus { border-color: var(--accent); }
   .search-input::placeholder { color: var(--text-muted); }
 
@@ -150,8 +150,6 @@
 
 <div class="tabs">
   <button class="tab active" id="tab-search" onclick="go('search')">Search</button>
-  <button class="tab" id="tab-add" onclick="go('add')">Add Person</button>
-  <button class="tab" id="tab-upload" onclick="go('upload')">Upload CSV</button>
 </div>
 
 <main>
@@ -159,6 +157,7 @@
   <!-- SEARCH -->
   <div class="panel active" id="panel-search">
     <div class="search-wrap">
+      <span class="search-icon">🔍</span>
       <input class="search-input" type="text" id="q" placeholder="Search by company — e.g. Datadog, Grafana, Snowflake…" oninput="search()">
     </div>
     <div class="filters">
