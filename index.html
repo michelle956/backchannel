@@ -157,7 +157,7 @@
   <!-- SEARCH -->
   <div class="panel active" id="panel-search">
     <div class="search-wrap">
-      <input class="search-input" type="text" id="q" placeholder="Search by company — e.g. Datadog, Grafana, Snowflake…" oninput="search()">
+      <input class="search-input" type="text" id="q" placeholder="Search by company or person — e.g. Datadog, Phil Hetzel…" oninput="search()">
     </div>
     <div class="filters">
       <div class="filter-chip">
@@ -338,7 +338,7 @@ function go(tab) {
 }
 
 function search() {
-  const q = document.getElementById('q').value.trim().toLowerCase();
+    const q = document.getElementById('q').value.trim().toLowerCase();
   const yf = parseInt(document.getElementById('yfrom').value) || null;
   const yt = parseInt(document.getElementById('yto').value) || null;
   const el = document.getElementById('results');
@@ -349,6 +349,9 @@ function search() {
   }
 
   const matches = allPeople.reduce((acc, p) => {
+    // Check if person name matches
+    const nameMatch = q && p.name.toLowerCase().includes(q);
+    
     const ss = stints(p);
     const hits = ss.filter(s => {
       if (q && !s.co.toLowerCase().includes(q)) return false;
@@ -358,7 +361,11 @@ function search() {
       if (!yf && yt && start > yt) return false;
       return true;
     });
-    if (hits.length) acc.push({ p, ss, hits });
+    
+    // Include person if name matches OR if they have company hits
+    if (nameMatch || hits.length) {
+      acc.push({ p, ss, hits: nameMatch ? ss : hits });
+    }
     return acc;
   }, []);
 
